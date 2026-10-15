@@ -1,0 +1,44 @@
+{
+    "name": "ahasend/laravel-mailer",
+    "description": "AhaSend API v2 mail transport for Laravel 11, 12 and 13",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["ahasend", "laravel", "mail", "mailer", "email", "transport", "api"],
+    "homepage": "https://github.com/AhaSend/laravel-mailer",
+    "authors": [
+        { "name": "AhaSend", "email": "support@ahasend.com" },
+        { "name": "Aamir Yaqoob" }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "ahasend/symfony-mailer": "^1.0@dev",
+        "illuminate/mail": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/support": "^11.0 || ^12.0 || ^13.0"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "orchestra/testbench": "^9.0 || ^10.0 || ^11.0",
+        "phpunit/phpunit": "^11.5.50"
+    },
+    "autoload": {
+        "psr-4": { "AhaSend\\Laravel\\": "src/" }
+    },
+    "autoload-dev": {
+        "psr-4": { "AhaSend\\Laravel\\Tests\\": "tests/" }
+    },
+    "extra": {
+        "laravel": {
+            "providers": ["AhaSend\\Laravel\\AhaSendServiceProvider"]
+        },
+        "branch-alias": {
+            "dev-main": "1.x-dev"
+        }
+    },
+    "repositories": [
+        { "type": "path", "url": "../ahasend-symfony-mailer" }
+    ],
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable"
+}
