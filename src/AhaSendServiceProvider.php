@@ -15,59 +15,109 @@ use AhaSend\SymfonyMailer\Transport\AhaSendTransportFactory;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Mail\MailManager;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\Mailer\Bridge\AhaSend\Event\AhaSendDeliveryEvent;
+use Symfony\Component\Mailer\Bridge\AhaSend\Transport\AhaSendSmtpTransport;
 use Symfony\Component\Mailer\Transport\Dsn;
 use Symfony\Component\Mailer\Transport\TransportInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
- * Adds the `ahasend` mail transport, which sends through the AhaSend API v2.
- *
- *     // config/services.php
- *     'ahasend' => [
- *         'key' => env('AHASEND_API_KEY'),
- *         'account_id' => env('AHASEND_ACCOUNT_ID'),
- *     ],
+ * Adds the `ahasend` mail transport (AhaSend API v2), the `ahasend-smtp` mail
+ * transport (AhaSend's SMTP relay), and the webhook route.
  *
  *     // .env
  *     MAIL_MAILER=ahasend
+ *     AHASEND_API_KEY=aha-sk-...
+ *     AHASEND_ACCOUNT_ID=...
  */
 final class AhaSendServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        // Lets MAIL_MAILER=ahasend work without a mailer entry in config/mail.php.
+        $this->mergeConfigFrom(__DIR__.'/../config/ahasend.php', 'ahasend');
+
+        // Lets MAIL_MAILER select them without an entry in config/mail.php.
         $config = $this->app['config'];
-        if (!$config->has('mail.mailers.ahasend')) {
-            $config->set('mail.mailers.ahasend', ['transport' => 'ahasend']);
+        foreach (['ahasend', 'ahasend-smtp'] as $transport) {
+            if (!$config->has("mail.mailers.{$transport}")) {
+                $config->set("mail.mailers.{$transport}", ['transport' => $transport]);
+            }
         }
     }
 
     public function boot(): void
     {
         $this->callAfterResolving('mail.manager', function (MailManager $manager): void {
-            $manager->extend('ahasend', fn (array $config): TransportInterface => $this->createTransport($config));
+            $manager->extend('ahasend', fn (array $config): TransportInterface => $this->createApiTransport($config));
+            $manager->extend('ahasend-smtp', fn (array $config): TransportInterface => $this->createSmtpTransport($config));
+        });
+
+        $this->registerRoutes();
+
+        if ($this->app->runningInConsole()) {
+            $this->publishes([__DIR__.'/../config/ahasend.php' => $this->app->configPath('ahasend.php')], 'ahasend-config');
+        }
+    }
+
+    private function registerRoutes(): void
+    {
+        if (!config('ahasend.routes') || $this->app->routesAreCached()) {
+            return;
+        }
+
+        Route::group([
+            'domain' => config('ahasend.domain'),
+            'prefix' => config('ahasend.path'),
+            'as' => 'ahasend.',
+            'middleware' => config('ahasend.middleware', []),
+        ], function (): void {
+            $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
         });
     }
 
     /**
      * @param array<string, mixed> $config the mailer's entry in config/mail.php
      */
-    private function createTransport(array $config): TransportInterface
+    private function createApiTransport(array $config): TransportInterface
     {
-        // A mailer's own settings win over config/services.php.
-        $settings = array_merge((array) $this->app['config']->get('services.ahasend', []), array_filter($config, static fn (mixed $value): bool => null !== $value && '' !== $value));
+        // A mailer's own settings win over config/ahasend.php and config/services.php.
+        $settings = array_merge(
+            array_filter((array) $this->app['config']->get('services.ahasend', []), self::isSet(...)),
+            array_filter(['key' => config('ahasend.api_key'), 'account_id' => config('ahasend.account_id')], self::isSet(...)),
+            array_filter($config, self::isSet(...)),
+        );
 
         if (blank($settings['key'] ?? null) || blank($settings['account_id'] ?? null)) {
-            throw new \InvalidArgumentException('The AhaSend mailer needs an API key and an account ID: set AHASEND_API_KEY and AHASEND_ACCOUNT_ID, read by config/services.php (services.ahasend.key and services.ahasend.account_id).');
+            throw new \InvalidArgumentException('The AhaSend mailer needs an API key and an account ID: set AHASEND_API_KEY and AHASEND_ACCOUNT_ID.');
         }
 
         $dsn = new Dsn('ahasend+api', (string) ($settings['host'] ?? 'default'), (string) $settings['key'], (string) $settings['account_id'], isset($settings['port']) ? (int) $settings['port'] : null);
 
         return (new AhaSendTransportFactory($this->deliveryEvents(), $this->httpClient($settings)))->create($dsn);
+    }
+
+    /**
+     * @param array<string, mixed> $config the mailer's entry in config/mail.php
+     */
+    private function createSmtpTransport(array $config): TransportInterface
+    {
+        $username = $config['username'] ?? config('ahasend.smtp.username');
+        $password = $config['password'] ?? config('ahasend.smtp.password');
+
+        if (blank($username) || blank($password)) {
+            throw new \InvalidArgumentException('The AhaSend SMTP mailer needs SMTP credentials: set AHASEND_SMTP_USERNAME and AHASEND_SMTP_PASSWORD.');
+        }
+
+        return (new AhaSendSmtpTransport((string) $username, (string) $password))->setRequireTls(true);
+    }
+
+    private static function isSet(mixed $value): bool
+    {
+        return null !== $value && '' !== $value;
     }
 
     /**
@@ -94,9 +144,8 @@ final class AhaSendServiceProvider extends ServiceProvider
     }
 
     /**
-     * Forwards AhaSendDeliveryEvent (a recipient AhaSend rejected while the
-     * others were sent) to Laravel's event dispatcher, so applications can
-     * listen for it with Event::listen().
+     * Forwards AhaSendDeliveryEvent (a recipient AhaSend rejected) to Laravel's
+     * event dispatcher, so applications can listen for it with Event::listen().
      */
     private function deliveryEvents(): EventDispatcherInterface
     {

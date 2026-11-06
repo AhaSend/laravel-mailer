@@ -1,22 +1,24 @@
-# AhaSend mail transport for Laravel
+# AhaSend for Laravel
 
 [![CI](https://github.com/AhaSend/laravel-mailer/actions/workflows/ci.yml/badge.svg)](https://github.com/AhaSend/laravel-mailer/actions/workflows/ci.yml)
 
-Send Laravel mail through the [AhaSend](https://ahasend.com) **API v2** on
-Laravel 11, 12 and 13. Mailables, notifications, queued mail and `Mail::fake()`
-keep working as usual.
+[AhaSend](https://ahasend.com) for Laravel 11, 12 and 13:
 
-It uses [`ahasend/symfony-mailer`](https://github.com/AhaSend/symfony-mailer),
-the API v2 transport for Symfony Mailer, which is what Laravel's mailer is
-built on.
+- an **API v2** mail transport and an **SMTP** mail transport, so mailables,
+  notifications, queued mail and `Mail::fake()` work as usual;
+- **webhooks**: a route that verifies AhaSend's signatures and dispatches a
+  Laravel event for each delivery, open, click, bounce and so on.
+
+It is built on [`ahasend/symfony-mailer`](https://github.com/AhaSend/symfony-mailer),
+as Laravel's mailer is built on Symfony Mailer.
 
 ## Requirements
 
 - PHP 8.2 or newer (Laravel 13 needs PHP 8.3)
-- Laravel 11, 12 or 13. Laravel 11 no longer receives security fixes;
-  Composer may refuse to install it unless you pass `--no-security-blocking`.
-- An AhaSend API key (`aha-sk-...`) allowed to send from your domain, and your
-  account ID. Both are in the AhaSend dashboard under *API Keys*.
+- Laravel 11, 12 or 13. Laravel 11 no longer receives security fixes, so Composer
+  may refuse to install it unless you pass `--no-security-blocking`.
+- For the API: an AhaSend API key (`aha-sk-...`) allowed to send from your domain,
+  and your account ID. Both are in the AhaSend dashboard under *API Keys*.
 
 ## Installation
 
@@ -24,16 +26,7 @@ built on.
 composer require ahasend/laravel-mailer
 ```
 
-Add AhaSend to `config/services.php`:
-
-```php
-'ahasend' => [
-    'key' => env('AHASEND_API_KEY'),
-    'account_id' => env('AHASEND_ACCOUNT_ID'),
-],
-```
-
-and select it in `.env`:
+Select AhaSend in `.env`:
 
 ```env
 MAIL_MAILER=ahasend
@@ -42,12 +35,32 @@ AHASEND_ACCOUNT_ID=your-account-id
 MAIL_FROM_ADDRESS=hello@your-verified-domain.example
 ```
 
-That's all: the package registers the `ahasend` mailer, so there is nothing
-to add to `config/mail.php`. The From address's domain must be verified in
-AhaSend.
+That's all: the package registers the `ahasend` mailer, so there is nothing to
+add to `config/mail.php`. The From address's domain must be verified in AhaSend.
 
-To use AhaSend next to another mailer, or with its own settings, add a mailer
-to `config/mail.php`. Its settings win over `config/services.php`:
+To change the package's settings, publish its configuration file:
+
+```sh
+php artisan vendor:publish --tag=ahasend-config
+```
+
+The key and account ID can also be `services.ahasend.key` and
+`services.ahasend.account_id` in `config/services.php`, or set on a mailer.
+
+### SMTP
+
+To send through AhaSend's SMTP relay instead, with STARTTLS required:
+
+```env
+MAIL_MAILER=ahasend-smtp
+AHASEND_SMTP_USERNAME=your-smtp-username
+AHASEND_SMTP_PASSWORD=your-smtp-password
+```
+
+### Mailer settings
+
+To use AhaSend next to another mailer, or with its own settings, add a mailer to
+`config/mail.php`. Its settings win over the others:
 
 ```php
 'mailers' => [
@@ -80,8 +93,8 @@ public function envelope(): Envelope
 ```
 
 Other AhaSend options use AhaSend's
-[SMTP special headers](https://ahasend.com/docs/smtp/special-headers), so an
-app moving from AhaSend's SMTP relay keeps working:
+[SMTP special headers](https://ahasend.com/docs/smtp/special-headers), so the same
+mailable works on both mailers:
 
 ```php
 public function headers(): Headers
@@ -93,10 +106,95 @@ public function headers(): Headers
 }
 ```
 
-Supported: `AhaSend-Tags`, `AhaSend-Track-Opens`, `AhaSend-Track-Clicks`,
-`AhaSend-Sandbox`, `AhaSend-Sandbox-Result`, `AhaSend-Metadata-Retention`,
-`AhaSend-Data-Retention`. A malformed value or an unknown `AhaSend-*` header
-throws before anything is sent.
+On the API mailer these are supported: `AhaSend-Tags`, `AhaSend-Track-Opens`,
+`AhaSend-Track-Clicks`, `AhaSend-Sandbox`, `AhaSend-Sandbox-Result`,
+`AhaSend-Metadata-Retention`, `AhaSend-Data-Retention`, and
+`AhaSend-Idempotency-Key`. A malformed value throws before anything is sent. Set
+`AhaSend-Idempotency-Key` to something stable, such as
+`order-confirmation-{$order->id}`, so a retried job cannot send twice.
+
+The Message-ID AhaSend assigned is on the sent message:
+`Mail::to($user)->send(new WelcomeMail())->getMessageId()`, or in a `MessageSent`
+listener, `$event->sent->getMessageId()`. It is the `data.message_id_header` of
+this message's webhooks.
+
+## Webhooks
+
+Create a webhook in AhaSend pointing at `https://your-app.example/ahasend/webhook`,
+and set the secret it returns:
+
+```env
+AHASEND_WEBHOOK_SECRET=the-complete-secret-including-any-prefix
+```
+
+The route verifies the signature and the timestamp, then dispatches a Laravel
+event. Without a configured secret, every request is refused.
+
+```php
+use AhaSend\Laravel\Events\MessageBounced;
+use Illuminate\Support\Facades\Event;
+
+Event::listen(function (MessageBounced $event) {
+    $event->payload['data']['recipient'];         // the bounced address
+    $event->payload['data']['message_id_header']; // the Message-ID of the message
+    $event->headers['webhook-id'];                // use it to ignore a repeated delivery
+});
+```
+
+All events are in `AhaSend\Laravel\Events`:
+
+| AhaSend webhook | Event |
+| --- | --- |
+| `message.reception` | `MessageReception` |
+| `message.delivered` | `MessageDelivered` |
+| `message.transient_error` | `MessageTransientError` |
+| `message.failed` | `MessageFailed` |
+| `message.bounced` | `MessageBounced` |
+| `message.suppressed` | `MessageSuppressed` |
+| `message.opened` | `MessageOpened` |
+| `message.clicked` | `MessageClicked` |
+| `message.unsubscribed` | `MessageUnsubscribed` |
+| `message.complained` | `MessageComplained` |
+| `message.routing` | `MessageRouting` |
+| `suppression.created`, `suppression.deleted` | `SuppressionCreated`, `SuppressionDeleted` |
+| `domain.dns_error` | `DomainDnsError` |
+| `contact.created`, `contact.updated`, `contact.deleted` | `ContactCreated`, `ContactUpdated`, `ContactDeleted` |
+| `contact.added_to_list`, `contact.removed_from_list` | `ContactAddedToList`, `ContactRemovedFromList` |
+| `contact.subscribed`, `contact.unsubscribed`, `contact.complained` | `ContactSubscribed`, `ContactUnsubscribed`, `ContactComplained` |
+| Every webhook, including types added later | `WebhookReceived` |
+
+Good to know:
+
+- **Inbound routes** (`message.routing`) have their own secret. Set
+  `AHASEND_ROUTE_SECRET` as well to send them to the same URL.
+- **AhaSend retries** a delivery that does not answer 2xx, up to 6 times, and
+  disables a webhook after 100 failed attempts in a row. Queue slow work in your
+  listeners so the route answers quickly.
+- **Deliveries can repeat and arrive out of order.** Use `webhook-id` to ignore
+  repeats and `$event->payload['timestamp']` to order them.
+
+### Configuration
+
+In `config/ahasend.php` (or the matching `AHASEND_*` variables):
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `routes` | `true` | Set to `false` to handle webhooks yourself |
+| `path` | `ahasend` | The route is `POST /{path}/webhook` |
+| `domain` | none | Serve the route from this domain only |
+| `middleware` | `[]` | Extra middleware for the route |
+| `webhook.secret` | none | The webhook's secret |
+| `webhook.route_secret` | none | The inbound route's secret |
+| `webhook.tolerance` | `300` | Largest allowed difference, in seconds, from the signed timestamp |
+
+To use your own route, add the same middleware:
+
+```php
+use AhaSend\Laravel\Http\Controllers\WebhookController;
+use AhaSend\Laravel\Http\Middleware\VerifyWebhookSignature;
+
+Route::post('/hooks/ahasend', WebhookController::class)->middleware(VerifyWebhookSignature::class);
+```
 
 ## Recipients
 
@@ -108,16 +206,18 @@ throws before anything is sent.
 | Cc but no To | An `InvalidArgumentException`; AhaSend needs a To address alongside Cc. |
 | More than 100 recipients, or more than 50 To + Cc + Bcc with Cc/Bcc | An `InvalidArgumentException` before sending. Send in batches. |
 
-## Errors and partial delivery
+This describes the API mailer; on SMTP, the relay applies its own rules.
+
+## Errors and rejected recipients
 
 API errors (an unverified sender domain, an invalid key, a paused domain, ...)
-throw `Symfony\Component\Mailer\Exception\HttpTransportException` with
-AhaSend's message, as Laravel's other API mailers do.
+throw `Symfony\Component\Mailer\Exception\HttpTransportException` with AhaSend's
+message, as Laravel's other API mailers do.
 
-AhaSend can accept some recipients of a message and reject others. That is
-not an error, because the accepted recipients are being sent and a retried job
-would send them a second copy. Each rejected recipient is reported as an
-event instead:
+AhaSend can reject a recipient while accepting the others, for example for a
+blocked recipient domain. That is not an exception, even when every recipient is
+rejected: a retried job would send the accepted recipients a second copy. Each
+rejected recipient is logged and reported as an event:
 
 ```php
 use Illuminate\Support\Facades\Event;
@@ -128,8 +228,6 @@ Event::listen(function (AhaSendDeliveryEvent $event) {
     Log::warning('AhaSend rejected a recipient: '.$event->getMessage());
 });
 ```
-
-When every recipient is rejected, nothing was sent and the send throws.
 
 ## Development
 

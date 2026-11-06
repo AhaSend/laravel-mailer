@@ -8,8 +8,11 @@ use AhaSend\Laravel\Tests\Fixtures\WelcomeMail;
 use AhaSend\SymfonyMailer\Transport\AhaSendApiTransport;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\JsonMockResponse;
 use Symfony\Component\Mailer\Bridge\AhaSend\Event\AhaSendDeliveryEvent;
 use Symfony\Component\Mailer\Exception\HttpTransportException;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class AhaSendMailerTest extends TestCase
 {
@@ -93,15 +96,51 @@ final class AhaSendMailerTest extends TestCase
         $this->assertSame(['553 recipient domain is blocked'], $rejected);
     }
 
-    public function testRejectingEveryRecipientThrows(): void
+    public function testRejectingEveryRecipientIsAlsoAnEventAndNotAnException(): void
     {
+        $rejected = [];
+        Event::listen(AhaSendDeliveryEvent::class, static function (AhaSendDeliveryEvent $event) use (&$rejected): void {
+            $rejected[] = $event->getMessage();
+        });
         $this->responseData = [
             ['object' => 'message', 'id' => null, 'recipient' => ['email' => 'x@blocked.example'], 'status' => 'error', 'error' => '553 recipient domain is blocked'],
         ];
 
-        $this->expectException(HttpTransportException::class);
-        $this->expectExceptionMessage('AhaSend rejected every recipient');
-
         Mail::to('x@blocked.example')->send(new WelcomeMail());
+
+        $this->assertSame(['553 recipient domain is blocked'], $rejected);
+    }
+
+    public function testTheSentMessageCarriesAhaSendsMessageId(): void
+    {
+        $sent = Mail::to('user@example.com')->send(new WelcomeMail());
+
+        $this->assertSame('<0@ahasend.test>', $sent->getMessageId());
+    }
+
+    public function testApiErrorsThrow(): void
+    {
+        $this->app->instance(HttpClientInterface::class, new MockHttpClient(new JsonMockResponse(['message' => 'invalid API key'], ['http_code' => 401])));
+        Mail::purge('ahasend');
+
+        $this->expectException(HttpTransportException::class);
+        $this->expectExceptionMessage('invalid API key (code 401).');
+
+        Mail::to('user@example.com')->send(new WelcomeMail());
+    }
+
+    public function testCredentialsCanComeFromTheConfigFile(): void
+    {
+        config([
+            'services.ahasend' => [],
+            'ahasend.api_key' => 'aha-sk-from-config',
+            'ahasend.account_id' => 'acc-from-config',
+        ]);
+        Mail::purge('ahasend');
+
+        Mail::to('user@example.com')->send(new WelcomeMail());
+
+        $this->assertSame('https://api.ahasend.com/v2/accounts/acc-from-config/messages', $this->lastRequest()['url']);
+        $this->assertContains('Authorization: Bearer aha-sk-from-config', $this->lastRequest()['headers']);
     }
 }
