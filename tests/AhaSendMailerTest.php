@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace AhaSend\Laravel\Tests;
 
 use AhaSend\Laravel\Tests\Fixtures\WelcomeMail;
-use AhaSend\SymfonyMailer\Transport\AhaSendApiTransport;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\JsonMockResponse;
 use Symfony\Component\Mailer\Bridge\AhaSend\Event\AhaSendDeliveryEvent;
+use Symfony\Component\Mailer\Bridge\AhaSend\Transport\AhaSendApiTransport;
 use Symfony\Component\Mailer\Exception\HttpTransportException;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -41,14 +41,14 @@ final class AhaSendMailerTest extends TestCase
         $this->assertEquals(['X-Campaign' => 'spring', 'X-Metadata-order' => '42'], $request['body']['headers']);
     }
 
-    public function testCcAndBccUseTheConversationEndpointWithoutABccHeader(): void
+    public function testCcAndBccRecipientsReceiveItWithoutABccHeader(): void
     {
         Mail::to('user@example.com')->cc('boss@example.com')->bcc('audit@example.com')->send(new WelcomeMail());
 
         $request = $this->lastRequest();
-        $this->assertStringEndsWith('/v2/accounts/acc-123/messages/conversation', $request['url']);
-        $this->assertSame([['email' => 'boss@example.com']], $request['body']['cc']);
-        $this->assertSame([['email' => 'audit@example.com']], $request['body']['bcc']);
+        $this->assertSame('https://api.ahasend.com/v2/accounts/acc-123/messages', $request['url']);
+        $this->assertSame([['email' => 'user@example.com'], ['email' => 'boss@example.com'], ['email' => 'audit@example.com']], $request['body']['recipients']);
+        $this->assertSame('boss@example.com', $request['body']['headers']['Cc']);
         $this->assertArrayNotHasKey('Bcc', $request['body']['headers']);
     }
 
@@ -124,7 +124,7 @@ final class AhaSendMailerTest extends TestCase
         Mail::purge('ahasend');
 
         $this->expectException(HttpTransportException::class);
-        $this->expectExceptionMessage('invalid API key (code 401).');
+        $this->expectExceptionMessage('invalid API key');
 
         Mail::to('user@example.com')->send(new WelcomeMail());
     }

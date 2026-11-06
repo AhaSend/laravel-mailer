@@ -11,7 +11,7 @@ First release (1.0.0).
 ### Added
 
 - `ahasend` mail transport for Laravel 11, 12 and 13, sending through the AhaSend
-  API v2 with `ahasend/symfony-mailer`.
+  API v2 with `ahasend/symfony-mailer`, the fork of the official bridge.
 - `ahasend-smtp` mail transport, sending through AhaSend's SMTP relay with
   STARTTLS required.
 - Webhooks: a `POST /ahasend/webhook` route with signature and timestamp checks,

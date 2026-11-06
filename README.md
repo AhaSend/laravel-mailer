@@ -9,8 +9,9 @@
 - **webhooks**: a route that verifies AhaSend's signatures and dispatches a
   Laravel event for each delivery, open, click, bounce and so on.
 
-It is built on [`ahasend/symfony-mailer`](https://github.com/AhaSend/symfony-mailer),
-as Laravel's mailer is built on Symfony Mailer.
+It uses AhaSend's Symfony Mailer bridge, since Laravel's mailer is built on Symfony
+Mailer: `ahasend/symfony-mailer`, the official bridge with API v2 for every Symfony
+version Laravel uses.
 
 ## Requirements
 
@@ -108,10 +109,8 @@ public function headers(): Headers
 
 On the API mailer these are supported: `AhaSend-Tags`, `AhaSend-Track-Opens`,
 `AhaSend-Track-Clicks`, `AhaSend-Sandbox`, `AhaSend-Sandbox-Result`,
-`AhaSend-Metadata-Retention`, `AhaSend-Data-Retention`, and
-`AhaSend-Idempotency-Key`. A malformed value throws before anything is sent. Set
-`AhaSend-Idempotency-Key` to something stable, such as
-`order-confirmation-{$order->id}`, so a retried job cannot send twice.
+`AhaSend-Metadata-Retention` and `AhaSend-Data-Retention`. A malformed value throws
+before anything is sent.
 
 The Message-ID AhaSend assigned is on the sent message:
 `Mail::to($user)->send(new WelcomeMail())->getMessageId()`, or in a `MessageSent`
@@ -198,15 +197,8 @@ Route::post('/hooks/ahasend', WebhookController::class)->middleware(VerifyWebhoo
 
 ## Recipients
 
-| The mail has | Result |
-| --- | --- |
-| To only | Each To address receives its own copy. |
-| To plus Cc and/or Bcc | One message with the To and Cc headers; Bcc addresses receive it without appearing in any header. |
-| Bcc only | Each Bcc address receives its own copy. |
-| Cc but no To | An `InvalidArgumentException`; AhaSend needs a To address alongside Cc. |
-| More than 100 recipients, or more than 50 To + Cc + Bcc with Cc/Bcc | An `InvalidArgumentException` before sending. Send in batches. |
-
-This describes the API mailer; on SMTP, the relay applies its own rules.
+On the API mailer, each To, Cc and Bcc address receives its own copy of the message.
+Cc addresses are shown in the message's headers; Bcc addresses are not.
 
 ## Errors and rejected recipients
 

@@ -59,7 +59,7 @@
     "repositories": [
         {
             "type": "path",
-            "url": "../ahasend-symfony-mailer",
+            "url": "../aha-send-mailer",
             "options": {
                 "versions": {
                     "ahasend/symfony-mailer": "1.x-dev"

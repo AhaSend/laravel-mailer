@@ -11,7 +11,6 @@ declare(strict_types=1);
 
 namespace AhaSend\Laravel;
 
-use AhaSend\SymfonyMailer\Transport\AhaSendTransportFactory;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Mail\MailManager;
 use Illuminate\Support\Arr;
@@ -21,6 +20,7 @@ use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\Mailer\Bridge\AhaSend\Event\AhaSendDeliveryEvent;
 use Symfony\Component\Mailer\Bridge\AhaSend\Transport\AhaSendSmtpTransport;
+use Symfony\Component\Mailer\Bridge\AhaSend\Transport\AhaSendTransportFactory;
 use Symfony\Component\Mailer\Transport\Dsn;
 use Symfony\Component\Mailer\Transport\TransportInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
