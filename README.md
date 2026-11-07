@@ -110,12 +110,13 @@ public function headers(): Headers
 On the API mailer these are supported: `AhaSend-Tags`, `AhaSend-Track-Opens`,
 `AhaSend-Track-Clicks`, `AhaSend-Sandbox`, `AhaSend-Sandbox-Result`,
 `AhaSend-Metadata-Retention` and `AhaSend-Data-Retention`. A malformed value throws
-before anything is sent.
+before anything is sent, as does a retention outside AhaSend's limits: 1 to 30 days
+for metadata, 0 to 30 for data.
 
 The Message-ID AhaSend assigned is on the sent message:
 `Mail::to($user)->send(new WelcomeMail())->getMessageId()`, or in a `MessageSent`
 listener, `$event->sent->getMessageId()`. It is the `data.message_id_header` of
-this message's webhooks.
+this message's webhooks, without its angle brackets.
 
 ## Webhooks
 
@@ -197,8 +198,10 @@ Route::post('/hooks/ahasend', WebhookController::class)->middleware(VerifyWebhoo
 
 ## Recipients
 
-On the API mailer, each To, Cc and Bcc address receives its own copy of the message.
-Cc addresses are shown in the message's headers; Bcc addresses are not.
+On the API mailer, a message with To addresses is sent as one message to its To, Cc
+and Bcc addresses, so recipients see each other and reply-all works. Bcc addresses
+are never shown. With more than 50 addresses, or only Bcc addresses, each address
+receives its own copy instead.
 
 ## Errors and rejected recipients
 

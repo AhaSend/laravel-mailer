@@ -30,10 +30,10 @@ final class AhaSendMailerTest extends TestCase
         Mail::to('user@example.com')->send(new WelcomeMail());
 
         $request = $this->lastRequest();
-        $this->assertSame('https://api.ahasend.com/v2/accounts/acc-123/messages', $request['url']);
+        $this->assertSame('https://api.ahasend.com/v2/accounts/acc-123/messages/conversation', $request['url']);
         $this->assertContains('Authorization: Bearer aha-sk-test', $request['headers']);
         $this->assertSame(['email' => 'from@example.com', 'name' => 'Example App'], $request['body']['from']);
-        $this->assertSame([['email' => 'user@example.com']], $request['body']['recipients']);
+        $this->assertSame([['email' => 'user@example.com']], $request['body']['to']);
         $this->assertSame('Welcome!', $request['body']['subject']);
         $this->assertSame('<p>Hello from Laravel</p>', $request['body']['html_content']);
         $this->assertSame(['welcome'], $request['body']['tags']);
@@ -41,14 +41,26 @@ final class AhaSendMailerTest extends TestCase
         $this->assertEquals(['X-Campaign' => 'spring', 'X-Metadata-order' => '42'], $request['body']['headers']);
     }
 
-    public function testCcAndBccRecipientsReceiveItWithoutABccHeader(): void
+    public function testToCcAndBccGetOneMessageWithoutABccHeader(): void
     {
         Mail::to('user@example.com')->cc('boss@example.com')->bcc('audit@example.com')->send(new WelcomeMail());
 
         $request = $this->lastRequest();
+        $this->assertSame('https://api.ahasend.com/v2/accounts/acc-123/messages/conversation', $request['url']);
+        $this->assertSame([['email' => 'user@example.com']], $request['body']['to']);
+        $this->assertSame([['email' => 'boss@example.com']], $request['body']['cc']);
+        $this->assertSame([['email' => 'audit@example.com']], $request['body']['bcc']);
+        $this->assertArrayNotHasKey('Cc', $request['body']['headers']);
+        $this->assertArrayNotHasKey('Bcc', $request['body']['headers']);
+    }
+
+    public function testBccOnlyMailGivesEachAddressItsOwnCopy(): void
+    {
+        Mail::bcc(['audit@example.com', 'archive@example.com'])->send(new WelcomeMail());
+
+        $request = $this->lastRequest();
         $this->assertSame('https://api.ahasend.com/v2/accounts/acc-123/messages', $request['url']);
-        $this->assertSame([['email' => 'user@example.com'], ['email' => 'boss@example.com'], ['email' => 'audit@example.com']], $request['body']['recipients']);
-        $this->assertSame('boss@example.com', $request['body']['headers']['Cc']);
+        $this->assertSame([['email' => 'audit@example.com'], ['email' => 'archive@example.com']], $request['body']['recipients']);
         $this->assertArrayNotHasKey('Bcc', $request['body']['headers']);
     }
 
@@ -56,7 +68,7 @@ final class AhaSendMailerTest extends TestCase
     {
         Mail::to('later@example.com')->queue(new WelcomeMail());
 
-        $this->assertSame([['email' => 'later@example.com']], $this->lastRequest()['body']['recipients']);
+        $this->assertSame([['email' => 'later@example.com']], $this->lastRequest()['body']['to']);
         $this->assertSame(['welcome'], $this->lastRequest()['body']['tags']);
     }
 
@@ -66,7 +78,7 @@ final class AhaSendMailerTest extends TestCase
 
         Mail::to('user@example.com')->send(new WelcomeMail());
 
-        $this->assertSame('https://api.example.test/v2/accounts/acc-other/messages', $this->lastRequest()['url']);
+        $this->assertSame('https://api.example.test/v2/accounts/acc-other/messages/conversation', $this->lastRequest()['url']);
         $this->assertContains('Authorization: Bearer aha-sk-other', $this->lastRequest()['headers']);
     }
 
@@ -87,8 +99,8 @@ final class AhaSendMailerTest extends TestCase
             $rejected[] = $event->getMessage();
         });
         $this->responseData = [
-            ['object' => 'message', 'id' => '<0@ahasend.test>', 'recipient' => ['email' => 'ok@example.com'], 'status' => 'queued', 'error' => null],
-            ['object' => 'message', 'id' => null, 'recipient' => ['email' => 'x@blocked.example'], 'status' => 'error', 'error' => '553 recipient domain is blocked'],
+            ['object' => 'message', 'id' => 'msg-0', 'message_id_header' => '<0@ahasend.test>', 'recipient' => ['email' => 'ok@example.com'], 'status' => 'queued', 'error' => null],
+            ['object' => 'message', 'id' => null, 'message_id_header' => null, 'recipient' => ['email' => 'x@blocked.example'], 'status' => 'error', 'error' => '553 recipient domain is blocked'],
         ];
 
         Mail::to(['ok@example.com', 'x@blocked.example'])->send(new WelcomeMail());
@@ -103,7 +115,7 @@ final class AhaSendMailerTest extends TestCase
             $rejected[] = $event->getMessage();
         });
         $this->responseData = [
-            ['object' => 'message', 'id' => null, 'recipient' => ['email' => 'x@blocked.example'], 'status' => 'error', 'error' => '553 recipient domain is blocked'],
+            ['object' => 'message', 'id' => null, 'message_id_header' => null, 'recipient' => ['email' => 'x@blocked.example'], 'status' => 'error', 'error' => '553 recipient domain is blocked'],
         ];
 
         Mail::to('x@blocked.example')->send(new WelcomeMail());
@@ -115,7 +127,7 @@ final class AhaSendMailerTest extends TestCase
     {
         $sent = Mail::to('user@example.com')->send(new WelcomeMail());
 
-        $this->assertSame('<0@ahasend.test>', $sent->getMessageId());
+        $this->assertSame('0@ahasend.test', $sent->getMessageId(), 'the message_id_header without angle brackets');
     }
 
     public function testApiErrorsThrow(): void
@@ -140,7 +152,7 @@ final class AhaSendMailerTest extends TestCase
 
         Mail::to('user@example.com')->send(new WelcomeMail());
 
-        $this->assertSame('https://api.ahasend.com/v2/accounts/acc-from-config/messages', $this->lastRequest()['url']);
+        $this->assertSame('https://api.ahasend.com/v2/accounts/acc-from-config/messages/conversation', $this->lastRequest()['url']);
         $this->assertContains('Authorization: Bearer aha-sk-from-config', $this->lastRequest()['headers']);
     }
 }

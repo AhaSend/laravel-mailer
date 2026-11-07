@@ -35,7 +35,7 @@ abstract class TestCase extends Orchestra
             $this->requests[] = ['url' => $url, 'body' => $body, 'headers' => $options['headers']];
             $emails = array_column($body['recipients'] ?? [...($body['to'] ?? []), ...($body['cc'] ?? []), ...($body['bcc'] ?? [])], 'email');
             $data = $this->responseData ?? array_map(static fn (string $email, int $i): array => [
-                'object' => 'message', 'id' => "<{$i}@ahasend.test>", 'recipient' => ['email' => $email, 'name' => ''],
+                'object' => 'message', 'id' => "msg-{$i}", 'message_id_header' => "<{$i}@ahasend.test>", 'recipient' => ['email' => $email, 'name' => ''],
                 'status' => 'queued', 'error' => null,
             ], $emails, array_keys($emails));
 
