@@ -201,7 +201,9 @@ Route::post('/hooks/ahasend', WebhookController::class)->middleware(VerifyWebhoo
 On the API mailer, a message with To addresses is sent as one message to its To, Cc
 and Bcc addresses, so recipients see each other and reply-all works. Bcc addresses
 are never shown. With more than 50 addresses, or only Bcc addresses, each address
-receives its own copy instead.
+receives its own copy instead. Each copy then has its own Message-ID, and
+`getMessageId()` on the sent message is the one of the first address AhaSend
+accepted, so only that address's webhooks match it.
 
 ## Errors and rejected recipients
 
