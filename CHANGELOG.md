@@ -6,7 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-First release (1.0.0).
+## [1.0.0] - 2026-11-25
+
+First release.
 
 ### Added
 
@@ -23,4 +25,5 @@ First release (1.0.0).
 - Mailable tags and metadata, and AhaSend's SMTP special headers as options.
 - Rejected recipients dispatched as Laravel events (`AhaSendDeliveryEvent`).
 
-[Unreleased]: https://github.com/AhaSend/laravel-mailer/commits/main
+[Unreleased]: https://github.com/AhaSend/laravel-mailer/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/AhaSend/laravel-mailer/releases/tag/v1.0.0

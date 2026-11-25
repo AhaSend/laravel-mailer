@@ -24,7 +24,7 @@
     ],
     "require": {
         "php": ">=8.2",
-        "ahasend/symfony-mailer": "^1.0@dev",
+        "ahasend/symfony-mailer": "^1.0",
         "illuminate/contracts": "^11.0 || ^12.0 || ^13.0",
         "illuminate/http": "^11.0 || ^12.0 || ^13.0",
         "illuminate/mail": "^11.0 || ^12.0 || ^13.0",
@@ -56,17 +56,6 @@
             "dev-main": "1.x-dev"
         }
     },
-    "repositories": [
-        {
-            "type": "path",
-            "url": "../aha-send-mailer",
-            "options": {
-                "versions": {
-                    "ahasend/symfony-mailer": "1.x-dev"
-                }
-            }
-        }
-    ],
     "config": {
         "sort-packages": true
     },

@@ -11,7 +11,8 @@
 
 It uses AhaSend's Symfony Mailer bridge, since Laravel's mailer is built on Symfony
 Mailer: `ahasend/symfony-mailer`, the official bridge with API v2 for every Symfony
-version Laravel uses.
+version Laravel uses. That package replaces Symfony's `symfony/aha-send-mailer`, so
+Composer removes `symfony/aha-send-mailer` if your app already has it.
 
 ## Requirements
 
@@ -233,9 +234,6 @@ composer install
 vendor/bin/phpunit
 vendor/bin/php-cs-fixer fix --dry-run --diff
 ```
-
-Until `ahasend/symfony-mailer` is on Packagist, Composer installs it from a
-`../ahasend-symfony-mailer` checkout (see `repositories` in `composer.json`).
 
 ## License
 
