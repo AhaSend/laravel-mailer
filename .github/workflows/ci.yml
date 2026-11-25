@@ -27,8 +27,6 @@ jobs:
           php-version: ${{ matrix.php }}
           coverage: none
           tools: composer:v2
-      # Until ahasend/symfony-mailer is on Packagist, install it from its GitHub repository.
-      - run: composer config repositories.symfony-mailer vcs https://github.com/AhaSend/symfony-mailer
       # Laravel 11 is end-of-life and has open advisories, which Composer blocks by default.
       - run: >-
           composer update --no-interaction --no-progress
@@ -46,7 +44,5 @@ jobs:
           php-version: "8.4"
           coverage: none
           tools: composer:v2
-      # Until ahasend/symfony-mailer is on Packagist, install it from its GitHub repository.
-      - run: composer config repositories.symfony-mailer vcs https://github.com/AhaSend/symfony-mailer
       - run: composer update --no-interaction --no-progress
       - run: vendor/bin/php-cs-fixer fix --dry-run --diff
